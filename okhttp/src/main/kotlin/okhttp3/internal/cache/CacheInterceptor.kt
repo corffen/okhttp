@@ -44,22 +44,23 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
   @Throws(IOException::class)
   override fun intercept(chain: Interceptor.Chain): Response {
     val call = chain.call()
+    //1.根据请求从diskLRUCache中取出候选缓存
     val cacheCandidate = cache?.get(chain.request())
 
     val now = System.currentTimeMillis()
-
+    //2.计算缓存策略
     val strategy = CacheStrategy.Factory(now, chain.request(), cacheCandidate).compute()
     val networkRequest = strategy.networkRequest
     val cacheResponse = strategy.cacheResponse
 
     cache?.trackResponse(strategy)
     val listener = (call as? RealCall)?.eventListener ?: EventListener.NONE
-
+    //3.候选缓存不为空,但是缓存策略计算的缓存不可用,就先关闭流
     if (cacheCandidate != null && cacheResponse == null) {
       // The cache candidate wasn't applicable. Close it.
       cacheCandidate.body?.closeQuietly()
     }
-
+    //4.如果缓存策略计算的缓存响应是null,并且网络请求也不可用(比如设置只使用缓存).直接返回504,网关超时
     // If we're forbidden from using the network and the cache is insufficient, fail.
     if (networkRequest == null && cacheResponse == null) {
       return Response.Builder()
@@ -75,6 +76,7 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
           }
     }
 
+    //5.这里是如果缓存响应不为空,但是网络请求为空,就返回缓存
     // If we don't need the network, we're done.
     if (networkRequest == null) {
       return cacheResponse!!.newBuilder()
@@ -89,7 +91,7 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
     } else if (cache != null) {
       listener.cacheMiss(call)
     }
-
+    //剩下的就是网络请求不为空,先往下一个拦截器执行网络请求
     var networkResponse: Response? = null
     try {
       networkResponse = chain.proceed(networkRequest)
@@ -100,6 +102,7 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
       }
     }
 
+    //如果网络请求得到的网络响应,响应码是304,就更新cache中的响应数据
     // If we have a cache response too, then we're doing a conditional get.
     if (cacheResponse != null) {
       if (networkResponse?.code == HTTP_NOT_MODIFIED) {
@@ -124,12 +127,13 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
         cacheResponse.body?.closeQuietly()
       }
     }
-
+    //如果缓存策略中的缓存响应是null的,也就是
     val response = networkResponse!!.newBuilder()
         .cacheResponse(stripBody(cacheResponse))
         .networkResponse(stripBody(networkResponse))
         .build()
 
+    //将请求响应存储在缓存文件中
     if (cache != null) {
       if (response.promisesBody() && CacheStrategy.isCacheable(response, networkRequest)) {
         // Offer this request to the cache.

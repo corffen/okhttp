@@ -129,6 +129,7 @@ class CacheStrategy internal constructor(
     fun compute(): CacheStrategy {
       val candidate = computeCandidate()
 
+      //请求头的CacheControl中设置了onlyIfCached
       // We're forbidden from using the network and the cache is insufficient.
       if (candidate.networkRequest != null && request.cacheControl.onlyIfCached) {
         return CacheStrategy(null, null)
@@ -143,7 +144,7 @@ class CacheStrategy internal constructor(
       if (cacheResponse == null) {
         return CacheStrategy(request, null)
       }
-
+      //如果是HTTPS请求,但是没有握手,缓存不可用
       // Drop the cached response if it's missing a required handshake.
       if (request.isHttps && cacheResponse.handshake == null) {
         return CacheStrategy(request, null)
@@ -152,11 +153,14 @@ class CacheStrategy internal constructor(
       // If this response shouldn't have been stored, it should never be used as a response source.
       // This check should be redundant as long as the persistence store is well-behaved and the
       // rules are constant.
+      // 根据响应码来判断当前的缓存是否可用,如果不可用,CacheResponse就设置为null
       if (!isCacheable(cacheResponse, request)) {
         return CacheStrategy(request, null)
       }
 
       val requestCaching = request.cacheControl
+      //如果请求头中的CacheControl设置了 noCache,就是不使用本地缓存,强制从服务器获取资源,此时缓存响应就返回null
+      //或者请求头中设置了有条件的请求,比如If-Modified-Since和If-None-Match
       if (requestCaching.noCache || hasConditions(request)) {
         return CacheStrategy(request, null)
       }
@@ -179,7 +183,7 @@ class CacheStrategy internal constructor(
       if (!responseCaching.mustRevalidate && requestCaching.maxStaleSeconds != -1) {
         maxStaleMillis = SECONDS.toMillis(requestCaching.maxStaleSeconds.toLong())
       }
-
+    //如果响应头中设置了noCache表示,缓存前需要确认它的有效性
       if (!responseCaching.noCache && ageMillis + minFreshMillis < freshMillis + maxStaleMillis) {
         val builder = cacheResponse.newBuilder()
         if (ageMillis + minFreshMillis >= freshMillis) {
