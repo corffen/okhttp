@@ -1,6 +1,15 @@
+plugins {
+  kotlin("jvm")
+  application
+}
+
+application {
+  mainClass.set("okhttp3.sample.Crawler")
+}
+
 dependencies {
-  implementation(project(":okhttp"))
-  implementation(Dependencies.jsoup)
+  implementation(projects.okhttp)
+  implementation(libs.jsoup)
 }
 
 tasks.compileJava {

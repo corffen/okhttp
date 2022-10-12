@@ -15,7 +15,7 @@
  */
 package okhttp3
 
-import java.net.InetAddress
+import android.annotation.SuppressLint
 import java.util.concurrent.TimeUnit
 import java.util.logging.Handler
 import java.util.logging.Level
@@ -115,9 +115,10 @@ class OkHttpClientTestRule : BeforeEachCallback, AfterEachCallback {
     var client = testClient
     if (client == null) {
       client = OkHttpClient.Builder()
-          .dns(SINGLE_INET_ADDRESS_DNS) // Prevent unexpected fallback addresses.
-          .eventListenerFactory { ClientRuleEventListener(logger = ::addEvent) }
-          .build()
+        .fastFallback(true) // Test this by default, since it'll soon be the default.
+        .dns(SINGLE_INET_ADDRESS_DNS) // Prevent unexpected fallback addresses.
+        .eventListenerFactory { ClientRuleEventListener(logger = ::addEvent) }
+        .build()
       testClient = client
     }
     return client
@@ -195,6 +196,7 @@ class OkHttpClientTestRule : BeforeEachCallback, AfterEachCallback {
     }
   }
 
+  @SuppressLint("NewApi")
   override fun afterEach(context: ExtensionContext) {
     val failure = context.executionException.orElseGet { null }
 
@@ -232,6 +234,7 @@ class OkHttpClientTestRule : BeforeEachCallback, AfterEachCallback {
     testClient?.dispatcher?.executorService?.shutdown()
   }
 
+  @SuppressLint("NewApi")
   private fun ExtensionContext.isFlaky(): Boolean {
     return (testMethod.orElseGet { null }?.isAnnotationPresent(Flaky::class.java) == true) ||
       (testClass.orElseGet { null }?.isAnnotationPresent(Flaky::class.java) == true)
@@ -253,11 +256,9 @@ class OkHttpClientTestRule : BeforeEachCallback, AfterEachCallback {
      * A network that resolves only one IP address per host. Use this when testing route selection
      * fallbacks to prevent the host machine's various IP addresses from interfering.
      */
-    private val SINGLE_INET_ADDRESS_DNS = object : Dns {
-      override fun lookup(hostname: String): List<InetAddress> {
-        val addresses = Dns.SYSTEM.lookup(hostname)
-        return listOf(addresses[0])
-      }
+    private val SINGLE_INET_ADDRESS_DNS = Dns { hostname ->
+      val addresses = Dns.SYSTEM.lookup(hostname)
+      listOf(addresses[0])
     }
 
     private operator fun Throwable?.plus(throwable: Throwable): Throwable {

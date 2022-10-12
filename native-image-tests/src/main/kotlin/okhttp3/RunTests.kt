@@ -124,7 +124,7 @@ fun findTests(selectors: List<DiscoverySelector>): List<TestDescriptor> {
   val testEngine = buildTestEngine()
   val filters = listOf<PostDiscoveryFilter>()
   val discoveryOrchestrator = EngineDiscoveryOrchestrator(listOf(testEngine), filters)
-  val discovered = discoveryOrchestrator.discover(request, "run")
+  val discovered = discoveryOrchestrator.discover(request, EngineDiscoveryOrchestrator.Phase.EXECUTION)
 
   return discovered.getEngineTestDescriptor(testEngine).descendants.toList()
 }
@@ -136,10 +136,13 @@ fun findTests(selectors: List<DiscoverySelector>): List<TestDescriptor> {
  * https://github.com/junit-team/junit5/issues/2469
  */
 fun treeListener(): TestExecutionListener {
+  val colorPalette = Class.forName("org.junit.platform.console.tasks.ColorPalette").getField("DEFAULT").apply {
+    isAccessible = true
+  }.get(null)
   return Class.forName(
     "org.junit.platform.console.tasks.TreePrintingListener").declaredConstructors.first()
     .apply {
       isAccessible = true
     }
-    .newInstance(PrintWriter(System.out), false, Theme.UNICODE) as TestExecutionListener
+    .newInstance(PrintWriter(System.out), colorPalette, Theme.UNICODE) as TestExecutionListener
 }
